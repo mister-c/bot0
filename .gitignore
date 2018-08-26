@@ -1,0 +1,10 @@
+*.txt
+*.sh
+*~
+/build/*
+crab.jpg
+/bot0/*
+*.pyc
+*.swp
+/img/*
+/tst/*
