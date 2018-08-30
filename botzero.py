@@ -2,25 +2,31 @@ import os;
 import re;
 
 import time;
+import hashlib;
+import commands;
+import schedule;
+
+# My soykaf
 import markov;
 
+# Other peoples soykaf
 from slackclient import SlackClient;
 from random import randint;
 
-import commands;
-
-import schedule;
 
 # Instantiate the client
 slack_client = SlackClient(os.environ.get('SLACK_BOT_TOKEN'));
 
 botzero_id = None;
 
-GREETING_DELAY = 1;
+jb_list = list();
+
+RESP_DELAY = 1;
 RTM_READ_DELAY = 1;
 
 # Commands
 EXAMPLE_COMMAND = "do";
+CHOOSE_COMMAND = "choose";
 SHITPOST_SEND_COMMAND = "shitpost";
 SHITPOST_COUNT_COMMAND = "how many shitposts do you have";
 SHITPOST_HELP_COMMAND = "how do i upload shitpost";
@@ -28,6 +34,8 @@ MARKOV_COMMAND = "markov";
 BIRTHDAY_COMMAND = "what is your birthday";
 GREETING_1_COMMAND = "say hello";
 GREETING_2_COMMAND = "howdy";
+JUKEBOX_ADD_COMMAND = "jukebox add";
+JUKEBOX_DIME_COMMAND = "jukebox dime";
 
 # Tags
 SHITPOST_TAG = "funny";
@@ -45,9 +53,10 @@ MY_BIRTHDATE = 'Aug 20 06:26:12 CDT 2018';
 MY_BIRTHDATE_TS = time.strptime(MY_BIRTHDATE, "%b %d %H:%M:%S %Z %Y");
 VOLA_ROOM_ID = os.environ.get('VOLA_ROOM_ID');
 
-#ACTIVE_CHANNEL = os.environ.get('PROD_CHAN');
-ACTIVE_CHANNEL = os.environ.get('QA_CHAN');
+JUKEBOX_FILENAME = 'jukebox.txt';
 
+ACTIVE_CHANNEL = os.environ.get('PROD_CHAN');
+#ACTIVE_CHANNEL = os.environ.get('QA_CHAN');
 
 # Define vola sync functions
 def sched_vola_download():
@@ -84,7 +93,6 @@ def parse_human_message(message, user):
         print('grep output: ' + cmd_out);
 
         message = message + "\n\n";
-
 
         filename = "";
         
@@ -150,6 +158,59 @@ def post_rand_image(tag, title, channel):
                         title=image_title
                 );
 
+def parse_choice(message):
+        choice_msg = message.replace('choose ', '', 1);
+        word_list =  choice_msg.split(' or ');
+
+        choice_index = 0;
+
+        resp = ':shrug:';
+
+        if(len(word_list) > 1):
+                hash_obj = hashlib.sha1(message);
+                choice_index = int(hash_obj.hexdigest(), 16) % len(word_list)
+                resp = word_list[choice_index];
+        return resp
+
+def dime_jukebox():
+        resp = ":shrug:"
+
+        print("putting a dime in the jukebox");
+
+        if(len(jb_list) > 0):
+               resp = jb_list[randint(0, len(jb_list)-1)];
+        return resp;
+
+def save_jukebox(track_name):
+        filename = JUKEBOX_FILENAME;
+        resp = ':shrug:';
+        jb_track_name = track_name.strip(' ');
+        jb_track_name = jb_track_name.strip('<');
+        jb_track_name = jb_track_name.strip('>');
+        
+        print("saving to the jukebox");
+        
+        if(len(jb_track_name) < 1):
+                print("null track name");
+                return resp;
+        
+        with open(filename, 'a') as jb_file:
+                jb_file.write(jb_track_name + '\n');
+                jb_file.close();
+                resp = '*kachoonk* song added to the jukebox';
+                return resp;
+        
+def load_jukebox():
+        filename = JUKEBOX_FILENAME;
+        global jb_list;
+        
+        print("loading up the jukebox");
+
+        with open(filename, 'r') as jb_file:
+                jb_list = [line.rstrip('\n') for line in jb_file];
+                jb_file.close();
+        print("loaded " + str(len(jb_list)) + " tracks");
+
 def count_img(tag):
         file_list_str = commands.getstatusoutput('ls ./img/ | grep ' + tag)[1];
         file_list = file_list_str.split("\n");
@@ -180,6 +241,13 @@ def handle_command(command, channel):
         elif command.startswith(SHITPOST_HELP_COMMAND):
                 response = "upload shitposts to https://volafile.org/r/" + VOLA_ROOM_ID + " and ill dl 'em. " + \
                  "ill need like a minute or 2 to do that.";
+        elif command.startswith(JUKEBOX_ADD_COMMAND):
+                jb_song = command;
+                jb_song = jb_song.replace(JUKEBOX_ADD_COMMAND, '', 1);
+                print("jb_song: " + jb_song);
+                response = save_jukebox(jb_song);
+        elif command.startswith(JUKEBOX_DIME_COMMAND):
+                response = dime_jukebox();
         elif command.startswith(BIRTHDAY_COMMAND):
                 response = "I was born on " + find_birthday();
 	elif command.startswith(MARKOV_COMMAND):
@@ -195,22 +263,23 @@ def handle_command(command, channel):
                 if(markov_response != 'fail'):
                         response = markov_response;
 	elif command.startswith(GREETING_1_COMMAND):
-                time.sleep(GREETING_DELAY);
+                time.sleep(RESP_DELAY);
                 response = "hello humans";
 	elif command.startswith(GREETING_2_COMMAND):
-                time.sleep(GREETING_DELAY);
+                time.sleep(RESP_DELAY);
                 response = "howdy";
-                
+	elif command.startswith(CHOOSE_COMMAND):
+                time.sleep(RESP_DELAY);
+                response = parse_choice(command);
 	slack_client.api_call(
 		"chat.postMessage",
 		channel=channel,
 		text=response or default_response
 	);
 
-
 # Schedule stuff
 schedule.every().friday.at("15:00").do(sched_reminder, TIMESHEET_REMINDER, 'time', 'timesheet');
-schedule.every().wednesday.at("8:00").do(sched_reminder, UPDOWN_REMINDER, 'updown', 'ups_downs');
+schedule.every().wednesday.at("15:00").do(sched_reminder, UPDOWN_REMINDER, 'updown', 'ups_downs');
 
 #sched_reminder(TIMESHEET_REMINDER);
 schedule.every(1).minute.do(sched_vola_download);
@@ -228,12 +297,12 @@ if __name__ == "__main__":
                 
 		# Read ID
 		botzero_id = slack_client.api_call("auth.test")["user_id"];
-
+                # Load up the jukebox
+                load_jukebox();
+                
                 # Test stuff here
-                # markov.markov('micah');
-                # print("I am %d days old." % (time.mktime(MY_BIRTHDATE_TS) / ((60 * 60 * 60 * 24 * 365) * 1.0));
-                # print("I am %d days old." % (time.mktime(MY_BIRTHDATE_TS) / seconds_per_year));
-                # print(time.localtime(time.mktime(MY_BIRTHDATE_TS)));
+                # load_jukebox();
+                # print(dime_jukebox());
                 
 		while True:
                         schedule.run_pending();
